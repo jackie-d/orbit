@@ -11,6 +11,7 @@ use App\Models\Contact;
 use App\Models\Interaction;
 use App\Services\InteractionWriter;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
@@ -41,7 +42,7 @@ class InteractionController extends Controller
         );
     }
 
-    public function store(InteractionRequest $request): Response
+    public function store(InteractionRequest $request): JsonResponse
     {
         $interaction = $this->writer->create($request->user(), $request->validated());
 
@@ -85,8 +86,8 @@ class InteractionController extends Controller
         $query
             ->with(self::RELATIONS)
             ->when($request->filled('contact_id'), fn (Builder $q) => $q->whereHas('contacts', fn (Builder $c) => $c->whereKey($request->integer('contact_id'))))
-            ->when($request->filled('from'), fn (Builder $q) => $q->where('occurred_at', '>=', $request->date('from')))
-            ->when($request->filled('to'), fn (Builder $q) => $q->where('occurred_at', '<=', $request->date('to')))
+            ->when($request->filled('from'), fn (Builder $q) => $q->where('occurred_at', '>=', $request->date('from')->setTimezone(config('app.timezone'))))
+            ->when($request->filled('to'), fn (Builder $q) => $q->where('occurred_at', '<=', $request->date('to')->setTimezone(config('app.timezone'))))
             ->when($request->filled('mood'), fn (Builder $q) => $q->where('mood', $request->input('mood')))
             ->when($request->filled('outcome'), fn (Builder $q) => $q->where('outcome', $request->input('outcome')))
             ->search($request->input('q'))

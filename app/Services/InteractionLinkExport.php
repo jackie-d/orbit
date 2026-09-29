@@ -37,10 +37,10 @@ class InteractionLinkExport
             // Links of deleted interactions are excluded (and filtered by date).
             ->whereHas('interaction', function (Builder $q) use ($filters) {
                 if (! empty($filters['from'])) {
-                    $q->where('occurred_at', '>=', Carbon::parse($filters['from']));
+                    $q->where('occurred_at', '>=', Carbon::parse($filters['from'])->setTimezone(config('app.timezone')));
                 }
                 if (! empty($filters['to'])) {
-                    $q->where('occurred_at', '<=', Carbon::parse($filters['to']));
+                    $q->where('occurred_at', '<=', Carbon::parse($filters['to'])->setTimezone(config('app.timezone')));
                 }
             });
 

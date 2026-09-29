@@ -30,8 +30,8 @@ class StatsController extends Controller
                 'by_outcome' => (clone $interactions)->whereNotNull('outcome')->toBase()
                     ->selectRaw('outcome, COUNT(*) as total')->groupBy('outcome')->pluck('total', 'outcome')->map(fn ($n) => (int) $n),
                 'top_contacts' => $user->contacts()
+                    ->whereHas('interactions')
                     ->withCount('interactions')
-                    ->having('interactions_count', '>', 0)
                     ->orderByDesc('interactions_count')
                     ->limit(5)
                     ->get()

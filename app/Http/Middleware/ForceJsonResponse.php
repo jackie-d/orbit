@@ -14,7 +14,7 @@ class ForceJsonResponse
 {
     public function handle(Request $request, Closure $next): Response
     {
-        if (! $request->headers->has('Accept') || $request->headers->get('Accept') === '*/*') {
+        if (! str_contains((string) $request->headers->get('Accept'), 'json')) {
             $request->headers->set('Accept', 'application/json');
         }
 

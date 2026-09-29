@@ -7,6 +7,7 @@ use App\Http\Requests\ContactRequest;
 use App\Http\Resources\ContactResource;
 use App\Models\Contact;
 use App\Services\ContactWriter;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
@@ -48,7 +49,7 @@ class ContactController extends Controller
         return ContactResource::collection($query->paginate($request->integer('per_page', 25))->withQueryString());
     }
 
-    public function store(ContactRequest $request): Response
+    public function store(ContactRequest $request): JsonResponse
     {
         $contact = $this->writer->create($request->user(), $request->payload());
 
