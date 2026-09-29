@@ -1,0 +1,49 @@
+# Local cluster (kind / minikube / Docker Desktop):
+#
+#   make kind-up      # builds images, creates a kind cluster, installs this chart
+#
+# or manually:
+#   helm upgrade --install orbit helm/orbit -f helm/orbit/values-dev.yaml -n orbit --create-namespace
+
+image:
+  app:
+    repository: orbit-app
+    tag: dev
+    pullPolicy: IfNotPresent
+  nginx:
+    repository: orbit-nginx
+    tag: dev
+    pullPolicy: IfNotPresent
+
+app:
+  env: local
+  debug: true
+  logLevel: debug
+  url: http://orbit.localtest.me
+  corsAllowedOrigins: "http://localhost:3000"
+
+web:
+  replicaCount: 1
+  podDisruptionBudget:
+    enabled: false
+
+postgresql:
+  enabled: true
+  persistence:
+    size: 1Gi
+
+redis:
+  enabled: true
+
+persistence:
+  size: 1Gi
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    # *.localtest.me resolves to 127.0.0.1
+    - host: orbit.localtest.me
+      paths:
+        - path: /
+          pathType: Prefix

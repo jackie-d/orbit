@@ -1,0 +1,71 @@
+{{- if .Values.worker.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "orbit.fullname" . }}-worker
+  labels:
+    {{- include "orbit.componentLabels" (list . "worker") | nindent 4 }}
+spec:
+  {{- if not .Values.worker.autoscaling.enabled }}
+  replicas: {{ .Values.worker.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      {{- include "orbit.componentSelectorLabels" (list . "worker") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "orbit.componentSelectorLabels" (list . "worker") | nindent 8 }}
+      annotations:
+        {{- include "orbit.configChecksums" . | nindent 8 }}
+        {{- with .Values.worker.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "orbit.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      # queue:work finishes the current job on SIGTERM.
+      terminationGracePeriodSeconds: {{ .Values.worker.terminationGracePeriodSeconds }}
+      containers:
+        - name: worker
+          image: {{ include "orbit.appImage" . }}
+          imagePullPolicy: {{ .Values.image.app.pullPolicy }}
+          args:
+            - php
+            - artisan
+            - queue:work
+            - redis
+            - --queue={{ .Values.worker.queues }}
+            - --tries={{ .Values.worker.tries }}
+            - --timeout={{ .Values.worker.timeout }}
+            - --max-time={{ .Values.worker.maxTime }}
+            - --sleep={{ .Values.worker.sleep }}
+          {{- include "orbit.phpEnv" . | nindent 10 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "orbit.phpVolumeMounts" . | nindent 12 }}
+      volumes:
+        {{- include "orbit.phpVolumes" . | nindent 8 }}
+      {{- with .Values.worker.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

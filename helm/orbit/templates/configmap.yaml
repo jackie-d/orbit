@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "orbit.fullname" . }}
+  labels:
+    {{- include "orbit.labels" . | nindent 4 }}
+data:
+  APP_NAME: {{ .Values.app.name | quote }}
+  APP_ENV: {{ .Values.app.env | quote }}
+  APP_DEBUG: {{ .Values.app.debug | quote }}
+  APP_URL: {{ include "orbit.appUrl" . | quote }}
+  APP_VERSION: {{ default .Chart.AppVersion .Values.image.app.tag | quote }}
+  LOG_CHANNEL: "stderr"
+  LOG_LEVEL: {{ .Values.app.logLevel | quote }}
+  # Database
+  DB_CONNECTION: "pgsql"
+  DB_HOST: {{ include "orbit.databaseHost" . | quote }}
+  {{- if .Values.postgresql.enabled }}
+  DB_PORT: "5432"
+  DB_DATABASE: {{ .Values.postgresql.database | quote }}
+  DB_USERNAME: {{ .Values.postgresql.username | quote }}
+  DB_SSLMODE: "disable"
+  {{- else }}
+  DB_PORT: {{ .Values.externalDatabase.port | quote }}
+  DB_DATABASE: {{ .Values.externalDatabase.database | quote }}
+  DB_USERNAME: {{ .Values.externalDatabase.username | quote }}
+  DB_SSLMODE: {{ .Values.externalDatabase.sslmode | quote }}
+  {{- end }}
+  # Redis: cache + queue
+  REDIS_CLIENT: "phpredis"
+  REDIS_HOST: {{ include "orbit.redisHost" . | quote }}
+  REDIS_PORT: {{ ternary "6379" (toString .Values.externalRedis.port) .Values.redis.enabled | quote }}
+  CACHE_STORE: "redis"
+  QUEUE_CONNECTION: "redis"
+  SESSION_DRIVER: "array"
+  # Photos
+  FILESYSTEM_DISK: {{ .Values.app.photoDisk | quote }}
+  ORBIT_PHOTO_DISK: {{ .Values.app.photoDisk | quote }}
+  {{- if eq .Values.app.photoDisk "s3" }}
+  AWS_BUCKET: {{ required "s3.bucket is required when app.photoDisk=s3" .Values.s3.bucket | quote }}
+  AWS_DEFAULT_REGION: {{ .Values.s3.region | quote }}
+  AWS_ENDPOINT: {{ .Values.s3.endpoint | quote }}
+  AWS_URL: {{ .Values.s3.url | quote }}
+  AWS_USE_PATH_STYLE_ENDPOINT: {{ .Values.s3.usePathStyleEndpoint | quote }}
+  {{- end }}
+  CORS_ALLOWED_ORIGINS: {{ .Values.app.corsAllowedOrigins | quote }}
+  # PHP-FPM pool sizing (web pods)
+  PHP_FPM_PM: {{ .Values.web.fpm.pm | quote }}
+  PHP_FPM_PM_MAX_CHILDREN: {{ .Values.web.fpm.maxChildren | quote }}
+  PHP_FPM_PM_START_SERVERS: {{ .Values.web.fpm.startServers | quote }}
+  PHP_FPM_PM_MIN_SPARE_SERVERS: {{ .Values.web.fpm.minSpareServers | quote }}
+  PHP_FPM_PM_MAX_SPARE_SERVERS: {{ .Values.web.fpm.maxSpareServers | quote }}
+  PHP_FPM_PM_MAX_REQUESTS: {{ .Values.web.fpm.maxRequests | quote }}

@@ -1,0 +1,72 @@
+{{- if .Values.migrations.enabled }}
+# Runs after the first install (once the ConfigMap/Secret/DB exist) and before
+# every upgrade (so new pods never start against an old schema).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "orbit.fullname" . }}-migrate
+  labels:
+    {{- include "orbit.componentLabels" (list . "migrate") | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migrations.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "orbit.componentSelectorLabels" (list . "migrate") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "orbit.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: wait-for-db
+          image: {{ include "orbit.appImage" . }}
+          imagePullPolicy: {{ .Values.image.app.pullPolicy }}
+          args: ["php", "artisan", "orbit:wait-for-db", "--timeout={{ .Values.migrations.waitForDatabaseSeconds }}"]
+          {{- include "orbit.phpEnv" . | nindent 10 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+          volumeMounts:
+            - name: storage
+              mountPath: /var/www/html/storage
+            - name: bootstrap-cache
+              mountPath: /var/www/html/bootstrap/cache
+            - name: tmp
+              mountPath: /tmp
+      containers:
+        - name: migrate
+          image: {{ include "orbit.appImage" . }}
+          imagePullPolicy: {{ .Values.image.app.pullPolicy }}
+          args: ["php", "artisan", "migrate", "--force", "--isolated"]
+          {{- include "orbit.phpEnv" . | nindent 10 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+          volumeMounts:
+            - name: storage
+              mountPath: /var/www/html/storage
+            - name: bootstrap-cache
+              mountPath: /var/www/html/bootstrap/cache
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: storage
+          emptyDir: {}
+        - name: bootstrap-cache
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+{{- end }}

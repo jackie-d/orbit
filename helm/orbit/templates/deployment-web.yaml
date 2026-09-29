@@ -1,0 +1,138 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "orbit.fullname" . }}-web
+  labels:
+    {{- include "orbit.componentLabels" (list . "web") | nindent 4 }}
+spec:
+  {{- if not .Values.web.autoscaling.enabled }}
+  replicas: {{ .Values.web.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      {{- include "orbit.componentSelectorLabels" (list . "web") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "orbit.componentSelectorLabels" (list . "web") | nindent 8 }}
+      annotations:
+        {{- include "orbit.configChecksums" . | nindent 8 }}
+        {{- with .Values.web.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "orbit.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: 30
+      containers:
+        # --- PHP-FPM ---------------------------------------------------------
+        - name: php
+          image: {{ include "orbit.appImage" . }}
+          imagePullPolicy: {{ .Values.image.app.pullPolicy }}
+          {{- include "orbit.phpEnv" . | nindent 10 }}
+          ports:
+            - name: fastcgi
+              containerPort: 9000
+              protocol: TCP
+          startupProbe:
+            exec:
+              command: ["fpm-healthcheck"]
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            exec:
+              command: ["fpm-healthcheck"]
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              # Let the endpoint removal propagate before FPM stops.
+              exec:
+                command: ["sleep", "5"]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "orbit.phpVolumeMounts" . | nindent 12 }}
+        # --- nginx -----------------------------------------------------------
+        - name: nginx
+          image: {{ include "orbit.nginxImage" . }}
+          imagePullPolicy: {{ .Values.image.nginx.pullPolicy }}
+          env:
+            - name: PHP_FPM_HOST
+              value: "127.0.0.1"
+            - name: PHP_FPM_PORT
+              value: "9000"
+            - name: NGINX_CLIENT_MAX_BODY_SIZE
+              value: {{ .Values.web.nginx.clientMaxBodySize | quote }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /nginx-health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+          readinessProbe:
+            # Goes through PHP: the pod only gets traffic when DB + Redis are reachable.
+            httpGet:
+              path: /api/v1/health/ready
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+            runAsUser: 101 # nginx in the unprivileged image
+          resources:
+            {{- toYaml .Values.web.nginx.resources | nindent 12 }}
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
+            - name: tmp
+              mountPath: /tmp
+            {{- if include "orbit.photosOnVolume" . }}
+            - name: photos
+              mountPath: /var/www/html/public/storage
+              readOnly: true
+            {{- end }}
+      volumes:
+        {{- include "orbit.phpVolumes" . | nindent 8 }}
+        - name: nginx-conf
+          emptyDir: {}
+      {{- with .Values.web.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.web.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.web.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.web.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

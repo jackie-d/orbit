@@ -1,0 +1,85 @@
+# Example production overrides. Secrets (APP_KEY, DB_PASSWORD, REDIS_PASSWORD,
+# AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY) come from a pre-created Secret:
+#
+#   kubectl -n orbit create secret generic orbit-secrets \
+#     --from-literal=APP_KEY="base64:$(openssl rand -base64 32)" \
+#     --from-literal=DB_PASSWORD=... --from-literal=REDIS_PASSWORD=... \
+#     --from-literal=AWS_ACCESS_KEY_ID=... --from-literal=AWS_SECRET_ACCESS_KEY=...
+#
+#   helm upgrade --install orbit helm/orbit -n orbit -f helm/orbit/values-prod.yaml \
+#     --set image.app.tag=v0.1.0 --set image.nginx.tag=v0.1.0
+
+existingSecret: orbit-secrets
+
+app:
+  url: https://orbit.example.com
+  corsAllowedOrigins: "https://app.example.com"
+  logLevel: warning
+  # Object storage keeps web/worker pods stateless across nodes.
+  photoDisk: s3
+
+persistence:
+  enabled: false
+
+s3:
+  bucket: orbit-photos
+  region: eu-west-1
+
+externalDatabase:
+  host: orbit-db.example.internal
+  port: 5432
+  database: orbit
+  username: orbit
+  sslmode: require
+
+externalRedis:
+  host: orbit-redis.example.internal
+  port: 6379
+
+web:
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 12
+    targetCPUUtilizationPercentage: 65
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: orbit
+          app.kubernetes.io/component: web
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      memory: 768Mi
+
+worker:
+  replicaCount: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+    nginx.ingress.kubernetes.io/proxy-body-size: 12m
+  hosts:
+    - host: orbit.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: orbit-tls
+      hosts:
+        - orbit.example.com
