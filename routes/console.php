@@ -1,8 +1,7 @@
 <?php
 
-use Illuminate\Foundation\Inspiring;
-use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
 
-Artisan::command('inspire', function () {
-    $this->comment(Inspiring::quote());
-})->purpose('Display an inspiring quote');
+// Runs in the "scheduler" deployment (php artisan schedule:work).
+Schedule::command('orbit:prune-deleted')->dailyAt('03:30')->onOneServer()->withoutOverlapping();
+Schedule::command('sanctum:prune-expired --hours=24')->daily()->onOneServer();

@@ -21,6 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->trustProxies(at: '*');
 
         $middleware->prependToGroup('api', ForceJsonResponse::class);
+        $middleware->throttleApi();
 
         $middleware->alias([
             'abilities' => CheckAbilities::class,
