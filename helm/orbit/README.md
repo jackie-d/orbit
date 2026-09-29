@@ -24,9 +24,10 @@ satisfy the Kubernetes **Pod Security "restricted"** profile.
 ## Quick start (local cluster)
 
 ```bash
-# builds orbit-app:dev / orbit-nginx:dev, creates a kind cluster with ingress-nginx, installs the chart
+# builds orbit-app:dev / orbit-nginx:dev, creates a kind cluster, installs the chart
 make kind-up
-curl http://orbit.localtest.me/api/v1/health/ready
+make kind-port-forward        # http://localhost:8080 -> svc/orbit
+curl http://localhost:8080/api/v1/health/ready
 ```
 
 Manually, on any cluster that can see the images:

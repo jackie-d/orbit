@@ -19,7 +19,8 @@ app:
   env: local
   debug: true
   logLevel: debug
-  url: http://orbit.localtest.me
+  # Reached with: kubectl -n orbit port-forward svc/orbit 8080:80
+  url: http://localhost:8080
   corsAllowedOrigins: "http://localhost:3000"
 
 web:
@@ -38,9 +39,11 @@ redis:
 persistence:
   size: 1Gi
 
+# Local clusters usually have no ingress controller: use port-forward (see above).
+# With one installed (e.g. Traefik on k3d / k3s), enable this instead.
 ingress:
-  enabled: true
-  className: nginx
+  enabled: false
+  className: traefik
   hosts:
     # *.localtest.me resolves to 127.0.0.1
     - host: orbit.localtest.me
