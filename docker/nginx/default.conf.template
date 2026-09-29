@@ -1,0 +1,58 @@
+# Orbit nginx vhost. Rendered with envsubst by the nginx image at startup
+# (${PHP_FPM_HOST}, ${PHP_FPM_PORT}, ${NGINX_CLIENT_MAX_BODY_SIZE}).
+
+server {
+    listen 8080 default_server;
+    server_name _;
+
+    root /var/www/html/public;
+    index index.php;
+
+    server_tokens off;
+    client_max_body_size ${NGINX_CLIENT_MAX_BODY_SIZE};
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "no-referrer" always;
+
+    # Probe that only checks nginx itself.
+    location = /nginx-health {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    location = /favicon.ico { access_log off; log_not_found off; }
+    location = /robots.txt  { access_log off; log_not_found off; }
+
+    # Uploaded photos on the "public" disk (volume mounted here), cache aggressively.
+    location /storage/ {
+        access_log off;
+        expires 7d;
+        try_files $uri =404;
+    }
+
+    location / {
+        try_files $uri /index.php?$query_string;
+    }
+
+    location = /index.php {
+        fastcgi_pass ${PHP_FPM_HOST}:${PHP_FPM_PORT};
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME /var/www/html/public/index.php;
+        fastcgi_param DOCUMENT_ROOT /var/www/html/public;
+        fastcgi_param HTTP_PROXY "";
+        fastcgi_read_timeout 300s;
+        fastcgi_buffers 16 16k;
+        fastcgi_buffer_size 32k;
+    }
+
+    # Never serve or execute any other PHP file.
+    location ~ \.php$ {
+        return 404;
+    }
+
+    location ~ /\.(?!well-known) {
+        deny all;
+    }
+}

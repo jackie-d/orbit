@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "orbit.fullname" . }}-test-connection
+  labels:
+    {{- include "orbit.componentLabels" (list . "test") | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 100
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: readiness
+      image: {{ .Values.tests.image }}
+      args:
+        - --fail-with-body
+        - --silent
+        - --show-error
+        - --retry
+        - "5"
+        - --retry-all-errors
+        - http://{{ include "orbit.fullname" . }}:{{ .Values.service.port }}/api/v1/health/ready
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]

@@ -1,0 +1,20 @@
+{{- if and (include "orbit.photosOnVolume" .) (not .Values.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "orbit.photosClaimName" . }}
+  labels:
+    {{- include "orbit.labels" . | nindent 4 }}
+  annotations:
+    # Keep uploaded photos when the release is uninstalled.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    {{- toYaml .Values.persistence.accessModes | nindent 4 }}
+  {{- with .Values.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size }}
+{{- end }}

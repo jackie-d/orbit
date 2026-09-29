@@ -1,0 +1,254 @@
+# Default values for Orbit.
+#
+# These defaults are production-leaning: bring your own Postgres and Redis
+# (see externalDatabase / externalRedis), or enable the in-chart ones for dev
+# (see values-dev.yaml).
+
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  # PHP-FPM image (Dockerfile target "app"): web, worker, scheduler, migrations.
+  app:
+    repository: ghcr.io/jackie-d/orbit-app
+    # Defaults to .Chart.AppVersion
+    tag: ""
+    pullPolicy: IfNotPresent
+  # Nginx image (Dockerfile target "nginx"): static files + FastCGI proxy.
+  nginx:
+    repository: ghcr.io/jackie-d/orbit-nginx
+    tag: ""
+    pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  automount: false
+
+# -- Laravel application settings (rendered into a ConfigMap / Secret).
+app:
+  name: Orbit
+  env: production
+  debug: false
+  # Public base URL. Defaults to the first ingress host (or http://localhost).
+  url: ""
+  # APP_KEY ("base64:..."). Leave empty to auto-generate one on install; it is
+  # kept across upgrades. Ignored when existingSecret is set.
+  key: ""
+  logLevel: info
+  # Comma separated origins allowed by CORS (e.g. your Next.js frontend).
+  corsAllowedOrigins: ""
+  # Where contact photos are stored: "public" (the PVC below) or "s3".
+  photoDisk: public
+  # Extra environment variables for every PHP container.
+  extraEnv: []
+  #  - name: ORBIT_PRUNE_AFTER_DAYS
+  #    value: "60"
+  extraEnvFrom: []
+
+# Use a pre-existing Secret instead of rendering one. It must contain:
+#   APP_KEY, DB_PASSWORD and (optionally) REDIS_PASSWORD, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+existingSecret: ""
+
+# -- Web tier: one pod = nginx (port 8080) + php-fpm (127.0.0.1:9000).
+web:
+  replicaCount: 2
+  fpm:
+    pm: dynamic
+    maxChildren: 10
+    startServers: 3
+    minSpareServers: 2
+    maxSpareServers: 5
+    maxRequests: 500
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+  nginx:
+    clientMaxBodySize: 12m
+    resources:
+      requests:
+        cpu: 20m
+        memory: 32Mi
+      limits:
+        memory: 128Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+
+# -- Queue worker (php artisan queue:work).
+worker:
+  enabled: true
+  replicaCount: 1
+  queues: default
+  tries: 3
+  timeout: 90
+  maxTime: 3600
+  sleep: 3
+  terminationGracePeriodSeconds: 120
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 75
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# -- Scheduler (php artisan schedule:work). Always a single replica.
+scheduler:
+  enabled: true
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# -- Database migrations, run as a Helm hook Job (post-install, pre-upgrade).
+migrations:
+  enabled: true
+  backoffLimit: 3
+  activeDeadlineSeconds: 900
+  waitForDatabaseSeconds: 180
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 82 # www-data in the php alpine image
+  runAsGroup: 82
+  fsGroup: 82
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: orbit.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: orbit-tls
+  #    hosts:
+  #      - orbit.example.com
+
+# Volume for contact photos when app.photoDisk is "public".
+# ReadWriteOnce only works when all web/worker pods share a node (e.g. kind,
+# minikube); use ReadWriteMany or app.photoDisk=s3 for multi-node clusters.
+persistence:
+  enabled: true
+  existingClaim: ""
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 5Gi
+
+# S3-compatible object storage, used when app.photoDisk is "s3".
+s3:
+  bucket: ""
+  region: us-east-1
+  endpoint: ""
+  url: ""
+  usePathStyleEndpoint: false
+  accessKeyId: ""
+  secretAccessKey: ""
+
+# Managed / external PostgreSQL (used when postgresql.enabled is false).
+externalDatabase:
+  host: ""
+  port: 5432
+  database: orbit
+  username: orbit
+  password: ""
+  sslmode: prefer
+
+# Managed / external Redis (used when redis.enabled is false).
+externalRedis:
+  host: ""
+  port: 6379
+  password: ""
+
+# In-chart PostgreSQL (single instance StatefulSet) — for development only.
+postgresql:
+  enabled: false
+  image:
+    repository: postgres
+    tag: 17-alpine
+    pullPolicy: IfNotPresent
+  database: orbit
+  username: orbit
+  # Auto-generated when empty (kept across upgrades).
+  password: ""
+  persistence:
+    enabled: true
+    storageClass: ""
+    size: 8Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+# In-chart Redis (single instance, no persistence) — for development only.
+redis:
+  enabled: false
+  image:
+    repository: redis
+    tag: 8-alpine
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      memory: 256Mi
+
+# `helm test` connection check image.
+tests:
+  image: curlimages/curl:8.16.0

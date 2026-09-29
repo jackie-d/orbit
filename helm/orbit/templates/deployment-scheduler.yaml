@@ -1,0 +1,61 @@
+{{- if .Values.scheduler.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "orbit.fullname" . }}-scheduler
+  labels:
+    {{- include "orbit.componentLabels" (list . "scheduler") | nindent 4 }}
+spec:
+  # Exactly one scheduler; Recreate avoids two overlapping during rollouts.
+  replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "orbit.componentSelectorLabels" (list . "scheduler") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "orbit.componentSelectorLabels" (list . "scheduler") | nindent 8 }}
+      annotations:
+        {{- include "orbit.configChecksums" . | nindent 8 }}
+        {{- with .Values.scheduler.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "orbit.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: scheduler
+          image: {{ include "orbit.appImage" . }}
+          imagePullPolicy: {{ .Values.image.app.pullPolicy }}
+          args: ["php", "artisan", "schedule:work"]
+          {{- include "orbit.phpEnv" . | nindent 10 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.scheduler.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "orbit.phpVolumeMounts" . | nindent 12 }}
+      volumes:
+        {{- include "orbit.phpVolumes" . | nindent 8 }}
+      {{- with .Values.scheduler.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.scheduler.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.scheduler.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
