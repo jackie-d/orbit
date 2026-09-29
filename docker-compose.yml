@@ -1,0 +1,129 @@
+# Orbit — local, production-like stack.
+#
+#   make up          # or: docker compose up -d --build
+#   curl localhost:8080/api/v1/health/ready
+#
+# Requires APP_KEY in .env (`make env` creates it).
+
+name: orbit
+
+x-app: &app
+  image: ${ORBIT_APP_IMAGE:-orbit-app:latest}
+  build:
+    context: .
+    target: app
+  restart: unless-stopped
+  environment: &app-env
+    APP_NAME: Orbit
+    APP_ENV: ${APP_ENV:-local}
+    APP_KEY: ${APP_KEY:?APP_KEY is not set - run `make env`}
+    APP_DEBUG: ${APP_DEBUG:-true}
+    APP_URL: ${APP_URL:-http://localhost:8080}
+    LOG_CHANNEL: stderr
+    LOG_LEVEL: ${LOG_LEVEL:-debug}
+    DB_CONNECTION: pgsql
+    DB_HOST: postgres
+    DB_PORT: 5432
+    DB_DATABASE: orbit
+    DB_USERNAME: orbit
+    DB_PASSWORD: orbit
+    REDIS_CLIENT: phpredis
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+    CACHE_STORE: redis
+    QUEUE_CONNECTION: redis
+    SESSION_DRIVER: array
+    FILESYSTEM_DISK: public
+    ORBIT_PHOTO_DISK: public
+    CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+  volumes:
+    - storage-public:/var/www/html/storage/app/public
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  # One-shot: run database migrations before the app starts.
+  migrate:
+    <<: *app
+    restart: "no"
+    command: ["php", "artisan", "migrate", "--force"]
+
+  app:
+    <<: *app
+    healthcheck:
+      test: ["CMD", "fpm-healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *app
+    command: ["php", "artisan", "queue:work", "redis", "--tries=3", "--max-time=3600", "--sleep=1"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  scheduler:
+    <<: *app
+    command: ["php", "artisan", "schedule:work"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    image: ${ORBIT_NGINX_IMAGE:-orbit-nginx:latest}
+    build:
+      context: .
+      target: nginx
+    restart: unless-stopped
+    environment:
+      PHP_FPM_HOST: app
+      PHP_FPM_PORT: 9000
+    ports:
+      - "${ORBIT_HTTP_PORT:-8080}:8080"
+    volumes:
+      - storage-public:/var/www/html/public/storage:ro
+    depends_on:
+      app:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: orbit
+      POSTGRES_USER: orbit
+      POSTGRES_PASSWORD: orbit
+    ports:
+      - "${ORBIT_DB_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orbit -d orbit"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:
+  redis-data:
+  storage-public:
